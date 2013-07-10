@@ -1,0 +1,7 @@
+name = Shop KHTS
+description = "Handles custom functionality for Shop KHTS"
+core = 7.x
+files[] = shop_khts.module
+dependencies[] = commerce
+
+version = "7.x - 0.1-alpha"

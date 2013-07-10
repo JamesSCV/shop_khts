@@ -1,0 +1,112 @@
+<?php
+/**
+ * Implementation of hook_form_FORMID_alter().
+ */
+function shop_khts_form_commerce_cart_add_to_cart_form_alter(&$form, &$form_state) {
+  $cart_product_ids = shop_khts_get_products_in_cart();
+  $purchased_product_ids = shop_khts_get_users_purchased_products_this_month();
+
+  $line_item = $form_state['line_item'];
+  $product = commerce_product_load($line_item->commerce_product[LANGUAGE_NONE][0]['product_id']);
+
+  // If this was a contrib module, we'd want to check if the associated registration
+  // entity is set to "Allow multiple registrations" for a user instead of just
+  // checking whether the product type is "program" as is the case for this specific site
+  if ($product->type == 'product') {
+    // Change the "Add to Cart" button text
+    $form['submit']['#value'] = t('Add to Cart');
+
+    if (in_array($product->product_id, $cart_product_ids)) {
+      // Product is already in cart! We only want to allow a quantity of 1,
+      // so disable the submit button and change its text accordingly
+      $form['submit']['#disabled'] = TRUE;
+      $form['submit']['#value'] = t('Already in cart');
+    }
+
+    if (in_array($product->product_id, $purchased_product_ids)) {
+      // Product has already been purchased!
+      // We only want users to register for a program once
+	    $form['submit']['#disabled'] = TRUE;
+	    $form['submit']['#value'] = t('Already bought');
+    }
+  }
+}
+
+/**
+ * Return the product_id values for all products in the cart
+ *
+ * @return
+ *  An array of product ids
+ */
+function shop_khts_get_products_in_cart() {
+  $cart_product_ids = &drupal_static(__FUNCTION__);
+
+  if (!isset($cart_product_ids)) {
+    global $user;
+    $cart_product_ids = array();
+    $order = commerce_cart_order_load($user->uid);
+    if ($order) {
+      $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+      foreach ($order_wrapper->commerce_line_items as $delta => $line_item_wrapper) {
+        $product_wrapper = $line_item_wrapper->commerce_product;
+        $cart_product_ids[] = $product_wrapper->product_id->value();
+      }
+    }
+
+    $cart_product_ids = array_unique($cart_product_ids);
+  }
+
+  return $cart_product_ids;
+}
+
+/**
+ * Return the product_id values for all products already purchased
+ *
+ * @return
+ *  An array of product ids
+ */
+function shop_khts_get_users_purchased_products() {
+  $purchased_product_ids = &drupal_static(__FUNCTION__);
+
+  if (!isset($purchased_product_ids)) {
+    global $user;
+    $query = db_select('commerce_order', 'corder');
+    $query->join('commerce_line_item', 'li', 'corder.order_id = li.order_id');
+    $query->join('field_data_commerce_product', 'prod', 'li.line_item_id = prod.entity_id');
+    $query->condition('corder.uid', $user->uid, '=')
+          ->condition('corder.status', 'completed', '=')
+          ->fields('prod', array('commerce_product_product_id'));
+    $result = $query->execute();
+
+    $purchased_product_ids = array_unique($result->fetchCol());
+  }
+
+  return $purchased_product_ids;
+}
+
+/**
+ * Return the product_id values for all products already purchased or pending
+ * this month!
+ *
+ * @return
+ *  An array of product ids
+ */
+function shop_khts_get_users_purchased_products_this_month() {
+  $purchased_product_ids = &drupal_static(__FUNCTION__);
+
+  if (!isset($purchased_product_ids)) {
+    global $user;
+    $query = db_select('commerce_order', 'corder');
+    $query->join('commerce_line_item', 'li', 'corder.order_id = li.order_id');
+    $query->join('field_data_commerce_product', 'prod', 'li.line_item_id = prod.entity_id');
+    $query->condition('corder.uid', $user->uid, '=')
+          ->condition('corder.status', 'pending', '=')
+          ->condition('corder.created', date('U', strtotime("first day of this month 12AM")), '>=')
+          ->fields('prod', array('commerce_product_product_id'));
+    $result = $query->execute();
+
+    $purchased_product_ids = array_unique($result->fetchCol());
+  }
+
+  return $purchased_product_ids;
+}
